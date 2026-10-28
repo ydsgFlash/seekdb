@@ -1,0 +1,71 @@
+# Local verification workflow for the 2026 competition task 1 (AI function enhancement).
+#
+# It builds the feature branch on a GitHub hosted runner so a compile error is
+# caught before the change is submitted for scoring. This workflow lives on a
+# dedicated branch so the pull request diff stays clean.
+name: AI Function Verify
+
+on:
+  push:
+    branches: [ci/verify-ai]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-feature-branch:
+    name: compile feat/ai-function-enhancement
+    runs-on: ubuntu-22.04
+    timeout-minutes: 330
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v3
+        with:
+          ref: feat/ai-function-enhancement
+          fetch-depth: 1
+
+      - name: Free Disk Space
+        uses: insightsengineering/disk-space-reclaimer@v1
+        with:
+          tools-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+          docker-images: true
+
+      - name: Install ubuntu environment
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y git wget rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses5 python3
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Initialize release build
+        shell: bash
+        run: |
+          if [[ -f ~/.bashrc ]]; then
+            source ~/.bashrc
+          fi
+          ./build.sh release --init
+          echo "$GITHUB_WORKSPACE/deps/3rd/usr/local/oceanbase/devtools/bin" >> "$GITHUB_PATH"
+
+      - name: Build release Unity binary
+        shell: bash
+        run: |
+          if [[ -f ~/.bashrc ]]; then
+            source ~/.bashrc
+          fi
+          cd build_release && make -j4
+          test -x src/observer/seekdb
+          test -x src/observer/observer
+
+      - name: Report built binaries
+        shell: bash
+        run: |
+          ls -l build_release/src/observer/seekdb build_release/src/observer/observer
